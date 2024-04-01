@@ -18,7 +18,6 @@ class makeVM:
 
     @property
     def pickle(self):
-        # print((self.code.co_code, self.code.co_consts, self.code.co_names, self.code.co_varnames, self.code.co_argcount, self.isFunction))
         return __import__('_pickle').dumps((self.code.co_code, self.code.co_consts, self.code.co_names, self.code.co_varnames, self.code.co_argcount, self.isFunction))
 
     @property
@@ -89,16 +88,26 @@ class VM:
                 "UNARY_NEGATIVE": 11,
                 "UNARY_NOT": 12,
                 "UNARY_INVERT": 15,
-                "BINARY_ADD": 23,
+                "BINARY_SUBSCR": 25,
                 "PUSH_EXC_INFO": 35,
                 "CHECK_EXC_MATCH": 36,
+                "GET_ITER": 68,
                 "RETURN_VALUE": 83,
+                "IMPORT_STAR": 84,
                 "POP_EXCEPT": 89,
                 "STORE_NAME": 90,
+                "FOR_ITER": 93,
+                "STORE_ATTR": 95,
+                "DELETE_ATTR": 96,
                 "LOAD_CONST": 100,
                 "LOAD_NAME": 101,
                 "BUILD_LIST": 103,
+                "BUILD_SET": 104,
+                "BUILD_MAP": 105,
+                "LOAD_ATTR": 106,
                 "COMPARE_OP": 107,
+                "IMPORT_NAME": 108,
+                "IMPORT_FROM": 109,
                 "JUMP_FORWARD": 110,
                 "POP_JUMP_FORWARD_IF_FALSE": 114,
                 "POP_JUMP_FORWARD_IF_TRUE": 115,
@@ -110,9 +119,19 @@ class VM:
                 "LOAD_FAST": 124,
                 "STORE_FAST": 125,
                 "DELETE_FAST": 126,
+                "POP_JUMP_FORWARD_IF_NOT_NONE": 128,
+                "POP_JUMP_FORWARD_IF_NONE": 129,
                 "RAISE_VARARGS": 130,
-                "CALL_FUNCTION": 131,
+                "JUMP_BACKWARD": 140,
                 "RESUME": 151,
+                "FORMAT_VALUE": 155,
+                "BUILD_CONST_KEY_MAP": 156,
+                "BUILD_STRING": 157,
+                "LOAD_METHOD": 160,
+                "LIST_EXTEND": 162,
+                "SET_UPDATE": 163,
+                "DICT_MERGE": 164,
+                "DICT_UPDATE": 165,
                 "PRECALL": 166,
                 "CALL": 171,
             },
@@ -156,6 +175,7 @@ class VM:
         pop  = stk.pop
 
         while (cx < len(self.code)):
+            # print(cx)
             op  = self.code[cx]
             arg = self.code[cx + 1]
 
@@ -166,7 +186,7 @@ class VM:
                     else:
                         name = self.names[arg]
                 except IndexError:
-                    self.logging.error("LOAD_GLOBAL: Cannot get arg[{}]".format(arg))
+                    self.logging.error("LOAD_GLOBAL: Cannot get args[{}]".format(arg))
 
                 try:
                     name = self.vmGlobals[name]
@@ -183,7 +203,7 @@ class VM:
                 except KeyError:
                     raise NameError("LOAD_NAME: Name '{}' is not defined".format(name))
                 push(name)
-            elif op == self.opcodes["BINARY_ADD"] or op == self.opcodes["BINARY_OP"]:
+            elif op == self.opcodes["BINARY_OP"]:
                 b = pop()
                 a = pop()
                 c = False
@@ -218,13 +238,6 @@ class VM:
                         self.logging.error("BINARY_OP: Unsupported ({arg})".format(arg = arg))
 
                 push(c)
-            elif op == self.opcodes["CALL_FUNCTION"]:
-                args = []
-                for argc in range(arg):
-                    args.insert(0, pop())
-
-                function = pop()
-                push(function(*args))
             elif op == self.opcodes["POP_TOP"]:
                 try:
                     pop()
@@ -268,25 +281,20 @@ class VM:
             elif op == self.opcodes["RETURN_VALUE"]:
                 return pop()
             elif op == self.opcodes["BUILD_LIST"]:
-                try:
-                    name = self.names[arg]
-
-                    lst = []
-
-                    for _ in range(name):
-                        item = pop()
-                        lst.append(item)
-
-                    push(lst)
-                except Exception as e:
-                    pass
+                push([])
             elif op == self.opcodes["RESUME"]:
                 cx = arg
             elif op == self.opcodes["CACHE"]:
                 pass
             elif op == self.opcodes["COMPARE_OP"]:
                 b = pop()
-                a = pop()
+                try:
+                    a = pop()
+                except IndexError:
+                    try:
+                        a = copy
+                    except NameError:
+                        raise IndexError("pop from empty list")
                 c = False
 
                 match arg:
@@ -312,8 +320,10 @@ class VM:
                     try:
                         args.insert(0, pop())
                     except IndexError:
-                        self.logging.error("PRECALL: missing arg[{}]".format(argc))
+                        self.logging.error("PRECALL: missing args[{}]".format(argc))
 
+                if stk[-1] == None:
+                    pop()
                 function = pop()
             elif op == self.opcodes["CALL"]:
                 if arg:
@@ -322,22 +332,28 @@ class VM:
                     args = []
             elif op == self.opcodes["POP_JUMP_FORWARD_IF_TRUE"]:
                 b = pop()
-                if b:
+
+                if not b:
+                    if not stk:
+                        push(b)
                     if self.isFunction:
                         cx += arg
                     while stk:
                         pop()
                         cx += arg
+                    cx += arg
             elif op == self.opcodes["POP_JUMP_FORWARD_IF_FALSE"]:
                 b = pop()
+
                 if not b:
-                    if self.isFunction:
-                        cx += arg
                     if not stk:
+                        push(b)
+                    if self.isFunction:
                         cx += arg
                     while stk:
                         pop()
                         cx += arg
+                    cx += arg
             elif op == self.opcodes["IS_OP"]:
                 b = pop()
                 a = pop()
@@ -361,7 +377,20 @@ class VM:
             elif op == self.opcodes["JUMP_FORWARD"]:
                 if self.isFunction:
                     cx += arg
+                while stk:
+                    pop()
+                    cx += arg
                 cx += arg
+            elif op == self.opcodes["JUMP_BACKWARD"]: # uncompleted
+                # print(cx)
+                if self.isFunction:
+                    cx -= arg
+                cx -= arg
+                cx -= arg
+                # print(stk)
+                # print(cx)
+                # print(stk)
+                pass
             elif op == self.opcodes["PUSH_EXC_INFO"]:
                 push(raise_var)
             elif op == self.opcodes["POP_EXCEPT"]:
@@ -374,7 +403,135 @@ class VM:
                 if arg == 1:
                     pass
             elif op == self.opcodes["COPY"]: # uncompleted
-                pass
+                if stk:
+                    value = pop()
+                try:
+                    if copy != value:
+                        copy = value
+                except(NameError, UnboundLocalError):
+                    copy = value
+                push(copy)
+            elif op == self.opcodes["GET_ITER"]:
+                data = pop()
+                t = str(type(data))
+                if (t == "<class 'range'>"):
+                    for i in range(data[-1], data[0] - 1, -1):
+                        push(i)
+                elif (t == "<class 'tuple'>") or (t == "<class 'list'>"):
+                    for i in data[::-1]:
+                        push(i)
+                elif (t == "<class 'dict'>"):
+                    pass
+                push(None)
+            elif op == self.opcodes["FOR_ITER"]:
+                if list(set(stk)) == [None]:
+                    for i in stk:
+                        pop()
+                        cx += arg
+                pop()
+            elif op == self.opcodes["LIST_EXTEND"]:
+                if arg == 1:
+                    extend = pop()
+                    lst = pop()
+                    for i in extend:
+                        lst.append(i)
+                push(lst)
+            elif op == self.opcodes["BUILD_CONST_KEY_MAP"]:
+                data = {}
+                items = pop()
+                for i in items[::-1]:
+                    data[i] = pop()
+                data = {key: value for key, value in list(data.items())[::-1]}
+                push(data)
+            elif op == self.opcodes["BINARY_SUBSCR"]:
+                item = pop()
+                data = pop()[item]
+                push(data)
+            elif op == self.opcodes["IMPORT_NAME"]:
+                name = self.names[arg]
+                push(__import__(name))
+            elif op == self.opcodes["IMPORT_FROM"]:
+                data = pop()
+                name = pop()
+                
+                if arg != len(name):
+                    push(name)
+                push(data)
+                push(getattr(data, name[arg - 1]))
+            elif op == self.opcodes["LOAD_ATTR"]:
+                name = self.names[arg]
+                data = pop()
+                push(getattr(data, name))
+            elif op == self.opcodes["DELETE_ATTR"]:
+                data = pop()
+                name = self.names[arg]
+                delattr(data, name)
+            elif op == self.opcodes["STORE_ATTR"]:
+                data = pop()
+                value = pop()
+                name = self.names[arg]
+                setattr(data, name, value)
+            elif op == self.opcodes["IMPORT_STAR"]:
+                data = vars(pop())
+                name = pop()
+
+                for i in data:
+                    self.vmGlobals[i] = data[i]
+            elif op == self.opcodes["LOAD_METHOD"]:
+                name = self.names[arg]
+                data = pop()
+                push(getattr(data, name))
+            elif op == self.opcodes["POP_JUMP_FORWARD_IF_NONE"]:
+                b = pop()
+                b = b is None
+
+                if not b:
+                    if not stk:
+                        push(b)
+                    if self.isFunction:
+                        cx += arg
+                    while stk:
+                        pop()
+                        cx += arg
+                    cx += arg
+            elif op == self.opcodes["POP_JUMP_FORWARD_IF_NOT_NONE"]:
+                b = pop()
+                b = b is None
+
+                if not b:
+                    if not stk:
+                        push(b)
+                    if self.isFunction:
+                        cx += arg
+                    
+                    while stk:
+                        pop()
+                        cx += arg
+                    cx += arg
+            elif op == self.opcodes["BUILD_SET"]:
+                push(set({}))
+            elif op == self.opcodes["SET_UPDATE"]:
+                value = pop()
+                data = pop()
+                data = set(value)
+                push(data)
+            elif op == self.opcodes["BUILD_MAP"]:
+                push(set({}))
+            elif op == self.opcodes["FORMAT_VALUE"]:
+                value = pop()
+                data = pop()
+                if not data:
+                    data = pop()
+                push(data)
+                push(value)
+            elif op == self.opcodes["BUILD_STRING"]:
+                value = ""
+                data = stk[-arg:]
+                for i in range(arg):
+                    pop()
+                for i in data:
+                    value = value + i
+                push(value)
             else:
                 name_opcode = None
                 for key, value in self.opcodes.items():
