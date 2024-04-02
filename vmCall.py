@@ -186,6 +186,9 @@ class VM:
 
         while (cx < len(self.code)):
             # print(cx)
+            if (cx % 2 != 0):
+                raise ValueError("op must is even ({})".format(cx))
+
             op  = self.code[cx]
             arg = self.code[cx + 1]
 
@@ -352,7 +355,7 @@ class VM:
                 b = pop()
                 arg = arg * 2
 
-                if not b:
+                if b:
                     if not stk:
                         push(b)
                     if self.isFunction:
@@ -505,7 +508,7 @@ class VM:
                 b = b is None
                 arg = arg * 2
 
-                if not b:
+                if b:
                     if not stk:
                         push(b)
                     if self.isFunction:
