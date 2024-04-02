@@ -1,5 +1,12 @@
 #!/bin/python3
 
+__import__('_pickle')
+__import__('sys')
+__import__('builtins')
+__import__('marshal')
+__import__('dis')
+__import__('logging')
+
 class makeVM:
     def __init__(self, code):
         self.VM_addr = __import__('builtins').hex(__import__('builtins').id(self))
@@ -134,6 +141,7 @@ class VM:
                 "DICT_UPDATE": 165,
                 "PRECALL": 166,
                 "CALL": 171,
+                "KW_NAMES": 172,
             },
             "3.12": {
                 "CACHE": 0,
@@ -173,6 +181,8 @@ class VM:
         stk = []
         push = stk.append
         pop  = stk.pop
+        args = []
+        kwargs = {}
 
         while (cx < len(self.code)):
             # print(cx)
@@ -315,10 +325,18 @@ class VM:
                     
                 push(c)
             elif op == self.opcodes["PRECALL"]:
-                args = []
                 for argc in range(arg):
                     try:
-                        args.insert(0, pop())
+                        data = pop()
+                        if str(type(data)) == "<class 'dict'>":
+                            try:
+                                name = list(data)[0]
+                                if ("KW_NAMES__" + name in kwargs):
+                                    kwargs[name] = kwargs.pop("KW_NAMES__" + name)
+                                    continue
+                            except ValueError:
+                                pass
+                        args.insert(0, data)
                     except IndexError:
                         self.logging.error("PRECALL: missing args[{}]".format(argc))
 
@@ -326,12 +344,13 @@ class VM:
                     pop()
                 function = pop()
             elif op == self.opcodes["CALL"]:
-                if arg:
-                    push(function(*args))
-                    function = None
-                    args = []
-            elif op == self.opcodes["POP_JUMP_FORWARD_IF_TRUE"]:
+                push(function(*args, **kwargs))
+                function = None
+                args = []
+                kwargs = {}
+            elif op == self.opcodes["POP_JUMP_FORWARD_IF_TRUE"]: # uncompleted
                 b = pop()
+                arg = arg * 2
 
                 if not b:
                     if not stk:
@@ -341,9 +360,9 @@ class VM:
                     while stk:
                         pop()
                         cx += arg
-                    cx += arg
-            elif op == self.opcodes["POP_JUMP_FORWARD_IF_FALSE"]:
+            elif op == self.opcodes["POP_JUMP_FORWARD_IF_FALSE"]: # uncompleted
                 b = pop()
+                arg = arg * 2
 
                 if not b:
                     if not stk:
@@ -353,7 +372,7 @@ class VM:
                     while stk:
                         pop()
                         cx += arg
-                    cx += arg
+                    # cx += arg
             elif op == self.opcodes["IS_OP"]:
                 b = pop()
                 a = pop()
@@ -484,6 +503,7 @@ class VM:
             elif op == self.opcodes["POP_JUMP_FORWARD_IF_NONE"]:
                 b = pop()
                 b = b is None
+                arg = arg * 2
 
                 if not b:
                     if not stk:
@@ -493,10 +513,10 @@ class VM:
                     while stk:
                         pop()
                         cx += arg
-                    cx += arg
             elif op == self.opcodes["POP_JUMP_FORWARD_IF_NOT_NONE"]:
                 b = pop()
                 b = b is None
+                arg = arg * 2
 
                 if not b:
                     if not stk:
@@ -507,7 +527,6 @@ class VM:
                     while stk:
                         pop()
                         cx += arg
-                    cx += arg
             elif op == self.opcodes["BUILD_SET"]:
                 push(set({}))
             elif op == self.opcodes["SET_UPDATE"]:
@@ -532,6 +551,19 @@ class VM:
                 for i in data:
                     value = value + i
                 push(value)
+            elif op == self.opcodes["KW_NAMES"]:
+                data = {}
+                const = self.consts[arg]
+                while const:
+                    name = const[-1]
+                    const = const[:-1]
+                    data[name] = pop()
+                data = {key: value for key, value in list(data.items())[::-1]}
+                
+                for item in data:
+                    name = {item: data[item]}
+                    kwargs["KW_NAMES__" + str(item)] = data[item]
+                    push(name)
             else:
                 name_opcode = None
                 for key, value in self.opcodes.items():
