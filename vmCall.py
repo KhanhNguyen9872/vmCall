@@ -6,18 +6,25 @@ __import__('builtins')
 __import__('marshal')
 __import__('dis')
 __import__('logging')
+__import__('types')
 
 class makeVM:
     def __init__(self, code):
         self.VM_addr = __import__('builtins').hex(__import__('builtins').id(self))
         self.isFunction = False
-        if str(type(code)) == "<class 'function'>":
+        type_code = str(type(code))
+        if type_code == "<class 'function'>":
             code = code.__code__
             self.isFunction = True
-        elif str(type(code)) != "<class 'code'>":
+        elif type_code == "<class 'str'>" or type_code == "<class 'bytes'>":
             code = compile(code, "VM", "exec")
+        elif type_code == "<class 'code'>":
+            pass
+        else:
+            raise TypeError("makeVM() arg 1 must be a string, bytes, code object or function. Found {}".format(type(code)))
 
         self.code = code
+        self.obj = (self.code.co_code, self.code.co_consts, self.code.co_names, self.code.co_varnames, self.code.co_argcount, self.isFunction, )
         return None
 
     def __repr__(self):
@@ -25,7 +32,7 @@ class makeVM:
 
     @property
     def pickle(self):
-        return __import__('_pickle').dumps((self.code.co_code, self.code.co_consts, self.code.co_names, self.code.co_varnames, self.code.co_argcount, self.isFunction))
+        return __import__('_pickle').dumps(self.obj)
 
     @property
     def marshal(self):
@@ -40,11 +47,13 @@ class VM:
         self.pickle = __import__('_pickle')
         if str(type(pickle_data)) == "<class 'code'>":
             unpickle = (pickle_data.co_code, pickle_data.co_consts, pickle_data.co_names,)
-        else:
+        elif str(type(pickle_data)) == "<class 'tuple'>":
+            unpickle = pickle_data
+        elif str(type(pickle_data)) == "<class 'bytes'>":
             try:
                 unpickle = self.pickle.loads(pickle_data)
-            except Exception:
-                raise TypeError("Cannot create VM from this code!")
+            except Exception as e:
+                raise TypeError("Cannot create VM from this code! [{}]".format(e))
         self.code = unpickle[0]
         self.consts = unpickle[1]
         self.names = unpickle[2]
@@ -62,6 +71,19 @@ class VM:
             self.isFunction = False
 
         self.vmGlobals = vars(__import__('builtins')).copy()
+        globals_ = {
+            '__name__': '__main__', 
+            '__doc__': None, 
+            '__file__': 'main.py',
+            '__cached__': None,
+            '__package__': None, 
+            '__loader__': globals()['__loader__'], 
+            '__spec__': None, 
+            '__annotations__': {}, 
+            '__builtins__': globals()['__builtins__'],
+        }
+        for i in globals_:
+            self.vmGlobals[i] = globals_[i]
 
         class dir:
             def __init__(self, addr):
@@ -73,19 +95,9 @@ class VM:
                 return "<built-in method __dir__ of VM object at {addr}>".format(addr = self.addr)
         self.VM_addr = __import__('builtins').hex(__import__('builtins').id(self))
         self.logging = __import__('logging')
+        self.types = __import__('types')
         self.__dir__ = dir(self.VM_addr)
         self.opcodes = {
-            "3.10": {
-                "POP_TOP": 1,
-                "PUSH_NULL": 2,
-                "BINARY_ADD": 23,
-                "BINARY_OP": 23,
-                "STORE_NAME": 90,
-                "LOAD_CONST": 100,
-                "LOAD_NAME": 101,
-                "LOAD_GLOBAL": 116,
-                "CALL_FUNCTION": 131,
-            },
             "3.11": {
                 "CACHE": 0,
                 "POP_TOP": 1,
@@ -103,11 +115,13 @@ class VM:
                 "IMPORT_STAR": 84,
                 "POP_EXCEPT": 89,
                 "STORE_NAME": 90,
+                "UNPACK_SEQUENCE": 92,
                 "FOR_ITER": 93,
                 "STORE_ATTR": 95,
                 "DELETE_ATTR": 96,
                 "LOAD_CONST": 100,
                 "LOAD_NAME": 101,
+                "BUILD_TUPLE": 102,
                 "BUILD_LIST": 103,
                 "BUILD_SET": 104,
                 "BUILD_MAP": 105,
@@ -129,6 +143,10 @@ class VM:
                 "POP_JUMP_FORWARD_IF_NOT_NONE": 128,
                 "POP_JUMP_FORWARD_IF_NONE": 129,
                 "RAISE_VARARGS": 130,
+                "MAKE_FUNCTION": 132,
+                "MAKE_CELL": 135,
+                "LOAD_CLOSURE": 136,
+                "STORE_DEREF": 138,
                 "JUMP_BACKWARD": 140,
                 "RESUME": 151,
                 "FORMAT_VALUE": 155,
@@ -142,11 +160,6 @@ class VM:
                 "PRECALL": 166,
                 "CALL": 171,
                 "KW_NAMES": 172,
-            },
-            "3.12": {
-                "CACHE": 0,
-                "POP_TOP": 1,
-                "PUSH_NULL": 2,
             }
         }
 
@@ -161,7 +174,77 @@ class VM:
     def __repr__(self):
         return "<VM object at {addr}>".format(addr = self.VM_addr)
 
+    def __dis__(self):
+        class std:
+            def __init__(self):
+                self.text = ""
+                return
+            def write(self, text):
+                self.text = self.text + str(text)
+                return
+
+        stdout = __import__('sys').stdout
+        __import__('sys').stdout = std()
+
+        __import__('dis').dis(self.code)
+
+        text = __import__('sys').stdout.text
+        __import__('sys').stdout = stdout
+        return text
+
+    def __extract_dis__(self, dis):
+        dis = [i for i in dis.split('\n') if i]
+        for i in range(len(dis)):
+            dis[i] = dis[i].split()
+            if dis[i][0] == '>>':
+                dis[i] = dis[i][1:]
+            if dis[i][1] == 'COMPARE_OP':
+                dis[i] = dis[i][:-1]
+        new_dict = {}
+        for i in dis:
+            try:
+                i[0] = int(i[0])
+                j = {}
+                for o in range(1, len(i), 1):
+                    match o:
+                        case 1:
+                            name = 'name'
+                        case 2:
+                            name = 'arg'
+                        case 3:
+                            if i[o] == '(to' or j['name'] == 'BINARY_OP':
+                                continue
+                            else:
+                                name = i[o]
+                                if name[0] == '(' and name[-1] == ')':
+                                    i[o] = name[1:-1]
+                                    name = 'varname'
+                                else:
+                                    print("case: {} - {}".format(o, i[1:]))
+                                    input()
+                        case 4:
+                            name = 'jump_to'
+                            i[o] = i[o][:-1]
+                        case _:
+                            print("case: {} - {}".format(o, i[1:]))
+                            input()
+
+                    j[name] = i[o]
+
+                new_dict[int(i[0])] = j
+            except ValueError:
+                continue
+
+        return new_dict
+
     def __call__(self, *args, **kwargs):
+
+        def get_jump_to(dis_data, name, cx):
+            try:
+                return int(dis_data[cx]['jump_to']) - 2
+            except (IndexError, ValueError, KeyError):
+                raise TypeError("{}: cannot get jump_to from dis_data (op = {})".format(name, cx))
+
         if args:
             for i in range(len(args)):
                 if i < self.arg_count:
@@ -177,7 +260,15 @@ class VM:
                 else:
                     raise TypeError("VM got an unexpected keyword argument '{}'".format(name))
 
+        # get all pop jump
+        dis_data = self.__dis__()
+        dis_data = self.__extract_dis__(dis_data)
+        # print(dis_data)
+
+        # main
         cx  = 0
+        arg = 0
+        previous_arg = [False, arg]
         stk = []
         push = stk.append
         pop  = stk.pop
@@ -264,27 +355,19 @@ class VM:
                 self.vmGlobals[name] = v
             elif op == self.opcodes["STORE_FAST"]:
                 v = pop()
-                try:
-                    name = self.varnames[arg]
-                except IndexError:
-                    name = "__varname__{}".format(arg)
+                name = self.varnames[arg]
+
 
                 self.vmGlobals[name] = v
             elif op == self.opcodes["DELETE_FAST"]:
-                try:
-                    name = self.varnames[arg]
-                except IndexError:
-                    name = "__varname__{}".format(arg)
+                name = self.varnames[arg]
 
                 try:
                     del self.vmGlobals[name]
                 except KeyError:
                     pass
             elif op == self.opcodes["LOAD_FAST"]:
-                try:
-                    name = self.varnames[arg]
-                except IndexError:
-                    name = "__varname__{}".format(arg)
+                name = self.varnames[arg]
 
                 try:
                     name = self.vmGlobals[name]
@@ -292,11 +375,16 @@ class VM:
                 except KeyError:
                      raise NameError("LOAD_FAST: Name '{}' is not defined".format(name))
             elif op == self.opcodes["RETURN_VALUE"]:
-                return pop()
+                data = pop()
+
+                if self.isFunction:
+                    return data
+                push(data)
             elif op == self.opcodes["BUILD_LIST"]:
                 push([])
             elif op == self.opcodes["RESUME"]:
-                cx = arg
+                pass
+                # cx = arg
             elif op == self.opcodes["CACHE"]:
                 pass
             elif op == self.opcodes["COMPARE_OP"]:
@@ -328,6 +416,11 @@ class VM:
                     
                 push(c)
             elif op == self.opcodes["PRECALL"]:
+                if arg == 0 and previous_arg[0]:
+                    pop()
+                    arg = previous_arg[1]
+                    previous_arg[0] = False
+
                 for argc in range(arg):
                     try:
                         data = pop()
@@ -347,35 +440,47 @@ class VM:
                     pop()
                 function = pop()
             elif op == self.opcodes["CALL"]:
-                push(function(*args, **kwargs))
+                if "<function <listcomp> at" in str(function):
+                    data = []
+                    for i in args:
+                        data.append(i)
+                    args = [tuple(data)]
+
+                try:
+                    VMobj = VM(makeVM(function).obj)
+                    VMobj.vmGlobals = self.vmGlobals
+                    push(VMobj(*args, **kwargs))
+                except TypeError:
+                    push(function(*args, **kwargs))
                 function = None
                 args = []
                 kwargs = {}
             elif op == self.opcodes["POP_JUMP_FORWARD_IF_TRUE"]: # uncompleted
                 b = pop()
-                arg = arg * 2
+                if (arg % 2 != 0):
+                    arg = arg * 2
 
                 if b:
-                    if not stk:
-                        push(b)
-                    if self.isFunction:
-                        cx += arg
-                    while stk:
-                        pop()
+                    jump_to = get_jump_to(dis_data, "POP_JUMP_FORWARD_IF_TRUE", cx)
+                    while cx < jump_to:
+                        try:
+                            pop()
+                        except:
+                            pass
                         cx += arg
             elif op == self.opcodes["POP_JUMP_FORWARD_IF_FALSE"]: # uncompleted
                 b = pop()
-                arg = arg * 2
+                if (arg % 2 != 0):
+                    arg = arg * 2
 
                 if not b:
-                    if not stk:
-                        push(b)
-                    if self.isFunction:
+                    jump_to = get_jump_to(dis_data, "POP_JUMP_FORWARD_IF_FALSE", cx)
+                    while cx < jump_to:
+                        try:
+                            pop()
+                        except:
+                            pass
                         cx += arg
-                    while stk:
-                        pop()
-                        cx += arg
-                    # cx += arg
             elif op == self.opcodes["IS_OP"]:
                 b = pop()
                 a = pop()
@@ -397,22 +502,23 @@ class VM:
             elif op == self.opcodes["NOP"]:
                 pass
             elif op == self.opcodes["JUMP_FORWARD"]:
-                if self.isFunction:
+                if (arg % 2 != 0):
+                    arg = arg * 2
+
+                jump_to = get_jump_to(dis_data, "JUMP_FORWARD", cx)
+                while cx < jump_to:
+                    # try:
+                    #     pop()
+                    # except:
+                    #     pass
                     cx += arg
-                while stk:
-                    pop()
-                    cx += arg
-                cx += arg
             elif op == self.opcodes["JUMP_BACKWARD"]: # uncompleted
-                # print(cx)
-                if self.isFunction:
+                if (arg % 2 != 0):
+                    arg = arg * 2
+
+                jump_to = get_jump_to(dis_data, "JUMP_BACKWARD", cx)
+                while cx > jump_to:
                     cx -= arg
-                cx -= arg
-                cx -= arg
-                # print(stk)
-                # print(cx)
-                # print(stk)
-                pass
             elif op == self.opcodes["PUSH_EXC_INFO"]:
                 push(raise_var)
             elif op == self.opcodes["POP_EXCEPT"]:
@@ -438,16 +544,26 @@ class VM:
                 t = str(type(data))
                 if (t == "<class 'range'>"):
                     for i in range(data[-1], data[0] - 1, -1):
+                        arg = arg + 1
                         push(i)
                 elif (t == "<class 'tuple'>") or (t == "<class 'list'>"):
                     for i in data[::-1]:
+                        arg = arg + 1
+                        push(i)
+                elif (t == "<class 'str'>"):
+                    for i in data[::-1]:
+                        arg = arg + 1
                         push(i)
                 elif (t == "<class 'dict'>"):
                     pass
+                previous_arg[0] = True
                 push(None)
             elif op == self.opcodes["FOR_ITER"]:
+                if (arg % 2 != 0):
+                    arg = arg * 2
                 if list(set(stk)) == [None]:
-                    for i in stk:
+                    jump_to = get_jump_to(dis_data, "FOR_ITER", cx)
+                    while cx < jump_to:
                         pop()
                         cx += arg
                 pop()
@@ -506,29 +622,30 @@ class VM:
             elif op == self.opcodes["POP_JUMP_FORWARD_IF_NONE"]:
                 b = pop()
                 b = b is None
-                arg = arg * 2
+                if (arg % 2 != 0):
+                    arg = arg * 2
 
                 if b:
-                    if not stk:
-                        push(b)
-                    if self.isFunction:
-                        cx += arg
-                    while stk:
-                        pop()
+                    jump_to = get_jump_to(dis_data, "POP_JUMP_FORWARD_IF_NONE", cx)
+                    while cx < jump_to:
+                        try:
+                            pop()
+                        except:
+                            pass
                         cx += arg
             elif op == self.opcodes["POP_JUMP_FORWARD_IF_NOT_NONE"]:
                 b = pop()
                 b = b is None
-                arg = arg * 2
+                if (arg % 2 != 0):
+                    arg = arg * 2
 
                 if not b:
-                    if not stk:
-                        push(b)
-                    if self.isFunction:
-                        cx += arg
-                    
-                    while stk:
-                        pop()
+                    jump_to = get_jump_to(dis_data, "POP_JUMP_FORWARD_IF_NOT_NONE", cx)
+                    while cx < jump_to:
+                        try:
+                            pop()
+                        except:
+                            pass
                         cx += arg
             elif op == self.opcodes["BUILD_SET"]:
                 push(set({}))
@@ -567,6 +684,61 @@ class VM:
                     name = {item: data[item]}
                     kwargs["KW_NAMES__" + str(item)] = data[item]
                     push(name)
+            elif op == self.opcodes["MAKE_FUNCTION"]:
+                data = pop()
+                try:
+                    func = self.types.FunctionType(data, globals())
+                except TypeError:
+                    closure = pop()
+                    if type(closure) == type(()):
+                        closure = closure + (pop(),)
+                    else:
+                        raise TypeError("cannot create function!")
+                    func = self.types.FunctionType(data, globals(), closure=())
+                push(func)
+            elif op == self.opcodes["UNPACK_SEQUENCE"]:
+                data = pop()
+                item = -1
+                for i in range(arg):
+                    push(data[item])
+                    item = item - 1
+            elif op == self.opcodes["MAKE_CELL"]:
+                try:
+                    if cx == 0:
+                        data = None
+                    else:
+                        data = stk[-1]
+                except IndexError:
+                    data = None
+
+                try:
+                    name = self.varnames[arg]
+                except IndexError:
+                    name = 'x'
+
+                self.vmGlobals[name] = data
+            elif op == self.opcodes["BUILD_TUPLE"]:
+                data = tuple()
+                for i in range(arg):
+                    data = data + (pop(),)
+                data = data[::-1]
+                push(data)
+            elif op == self.opcodes["STORE_DEREF"]:
+                v = pop()
+                try:
+                    name = self.varnames[arg]
+                except IndexError:
+                    name = 'x'
+
+                self.vmGlobals[name] = v
+            elif op == self.opcodes["LOAD_CLOSURE"]:    # uncompleted
+                try:
+                    name = self.varnames[arg]
+                except IndexError:
+                    name = 'x'
+
+                data = self.vmGlobals[name]
+                push(data)
             else:
                 name_opcode = None
                 for key, value in self.opcodes.items():
@@ -579,3 +751,12 @@ class VM:
                 self.logging.error("Unsupported opcode: " + name_opcode)
 
             cx += 2
+            previous_arg[1] = arg
+
+        return 0
+
+"""
+NOT WORKING: 
+1. <listcomp>
+2. closure on function
+"""
