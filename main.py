@@ -78,8 +78,9 @@ x1, x2 = solve_quadratic(a, b, c)
 print("Nghiệm của phương trình {}x^2 + {}x + {} là: {} {}".format(a, b, c, x1, x2))
 """
 
-code1 = """
-def is_prime(n, divisor):
+code1 = r"""
+a = 12345
+def is_prime(n = 7, divisor = 2):
     if n <= 1:
         return False
     elif n == 2:
@@ -92,11 +93,16 @@ def is_prime(n, divisor):
         return is_prime(n, divisor + 1)
 
 # Kiểm tra số 7 có phải là số nguyên tố hay không
-print(is_prime(7, 2))  # Output: True
+print(is_prime())  # Output: True
 
 # Kiểm tra số 10 có phải là số nguyên tố hay không
-print(is_prime(10, 2))  # Output: False
+print(is_prime(10))  # Output: False
 """
+
+# code1 = """
+
+
+# """
 
 # make pickle
 codeObj1 = makeVM(code1)

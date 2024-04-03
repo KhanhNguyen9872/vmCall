@@ -70,8 +70,8 @@ class VM:
         except IndexError:
             self.isFunction = False
 
-        self.vmGlobals = vars(__import__('builtins')).copy()
-        globals_ = {
+        self.vmGlobals2 = vars(__import__('builtins')).copy()
+        self.vmGlobals = {
             '__name__': '__main__', 
             '__doc__': None, 
             '__file__': 'main.py',
@@ -80,10 +80,10 @@ class VM:
             '__loader__': globals()['__loader__'], 
             '__spec__': None, 
             '__annotations__': {}, 
-            '__builtins__': globals()['__builtins__'],
+            '__builtins__': self.vmGlobals2,
         }
-        for i in globals_:
-            self.vmGlobals[i] = globals_[i]
+        # print(self.vmGlobals)
+        # print(self.vmGlobals2)
 
         class dir:
             def __init__(self, addr):
@@ -260,6 +260,15 @@ class VM:
                 else:
                     raise TypeError("VM got an unexpected keyword argument '{}'".format(name))
 
+        if len(args) < self.arg_count and self.isFunction:
+            data = self.consts[-1]['default']
+            if type(data) == type([]):   
+                args = self.arg_count - len(args)
+                argc = len(self.varnames) - 1
+                for i in range(args):
+                    name = self.varnames[argc - i]
+                    self.vmGlobals[name] = data[-i]
+
         # get all pop jump
         dis_data = self.__dis__()
         dis_data = self.__extract_dis__(dis_data)
@@ -272,6 +281,7 @@ class VM:
         stk = []
         push = stk.append
         pop  = stk.pop
+        argc = 0
         args = []
         kwargs = {}
 
@@ -284,19 +294,26 @@ class VM:
             arg = self.code[cx + 1]
 
             if op == self.opcodes["LOAD_GLOBAL"]:
+                # print(self.names)
                 try:
                     if self.isFunction:
                         name = self.names[arg - 1]
                     else:
                         name = self.names[arg]
                 except IndexError:
-                    self.logging.error("LOAD_GLOBAL: Cannot get args[{}]".format(arg))
+                    if self.isFunction:
+                        name = self.names[-1]
+                    else:
+                        self.logging.error("LOAD_GLOBAL: Cannot get args[{}]".format(arg))
 
                 try:
                     name = self.vmGlobals[name]
-                    push(name)
                 except KeyError:
-                    raise NameError("LOAD_GLOBAL: Cannot get {} in GLOBAL".format(self.names[arg]))
+                    try:
+                        name = self.vmGlobals2[name]
+                    except KeyError:
+                        raise NameError("LOAD_GLOBAL: Cannot get {} in GLOBAL".format(self.names[arg]))
+                push(name)
             elif op == self.opcodes["LOAD_CONST"]:
                 const = self.consts[arg]
                 push(const)
@@ -305,7 +322,10 @@ class VM:
                 try:
                     name = self.vmGlobals[name]
                 except KeyError:
-                    raise NameError("LOAD_NAME: Name '{}' is not defined".format(name))
+                    try:
+                        name = self.vmGlobals2[name]
+                    except KeyError:
+                        raise NameError("LOAD_NAME: Name '{}' is not defined".format(name))
                 push(name)
             elif op == self.opcodes["BINARY_OP"]:
                 b = pop()
@@ -371,9 +391,9 @@ class VM:
 
                 try:
                     name = self.vmGlobals[name]
-                    push(name)
                 except KeyError:
-                     raise NameError("LOAD_FAST: Name '{}' is not defined".format(name))
+                    raise NameError("LOAD_FAST: Name '{}' is not defined".format(name))
+                push(name)
             elif op == self.opcodes["RETURN_VALUE"]:
                 data = pop()
 
@@ -447,8 +467,12 @@ class VM:
                     args = [tuple(data)]
 
                 try:
-                    VMobj = VM(makeVM(function).obj)
-                    VMobj.vmGlobals = self.vmGlobals
+                    VMobj = makeVM(function)
+                    # print(VMobj.dis())
+                    # print(VMobj.obj)
+                    VMobj = VM(VMobj.obj)
+                    VMobj.vmGlobals2.update(self.vmGlobals)
+                    VMobj.vmGlobals2.update(self.vmGlobals2)
                     push(VMobj(*args, **kwargs))
                 except TypeError:
                     push(function(*args, **kwargs))
@@ -685,16 +709,21 @@ class VM:
                     kwargs["KW_NAMES__" + str(item)] = data[item]
                     push(name)
             elif op == self.opcodes["MAKE_FUNCTION"]:
-                data = pop()
+                function = pop()
+
+                if arg == 1:
+                    arg = pop()
+                    data = function
+                    function = function.replace(co_consts=function.co_consts + ({'default': list(arg[::-1])},))
                 try:
-                    func = self.types.FunctionType(data, globals())
+                    func = self.types.FunctionType(function, globals())
                 except TypeError:
                     closure = pop()
                     if type(closure) == type(()):
                         closure = closure + (pop(),)
                     else:
                         raise TypeError("cannot create function!")
-                    func = self.types.FunctionType(data, globals(), closure=())
+                    func = self.types.FunctionType(function, globals(), closure=())
                 push(func)
             elif op == self.opcodes["UNPACK_SEQUENCE"]:
                 data = pop()
