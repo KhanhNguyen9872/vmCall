@@ -7,6 +7,7 @@ __import__('marshal')
 __import__('dis')
 __import__('logging')
 __import__('types')
+__import__('sys').setrecursionlimit(1000000000)
 
 class makeVM:
     def __init__(self, code):
@@ -149,6 +150,7 @@ class VM:
                 "POP_JUMP_FORWARD_IF_NONE": 129,
                 "RAISE_VARARGS": 130,
                 "MAKE_FUNCTION": 132,
+                "BUILD_SLICE": 133,
                 "MAKE_CELL": 135,
                 "LOAD_CLOSURE": 136,
                 "STORE_DEREF": 138,
@@ -336,7 +338,7 @@ class VM:
                     try:
                         name = self.vmGlobals2[name]
                     except KeyError:
-                        raise NameError("LOAD_GLOBAL: Cannot get {} in GLOBAL".format(self.names[arg]))
+                        raise NameError("LOAD_GLOBAL: Cannot get '{}' in GLOBAL".format(self.names[arg]))
                 push(name)
             elif op == self.opcodes["LOAD_CONST"]:
                 const = self.consts[arg]
@@ -490,13 +492,7 @@ class VM:
                     except IndexError:
                         self.logging.error("PRECALL: missing args[{}]".format(argc))
 
-                # if stk:
-                #     if stk[-1] == None:
-                #         pop()
-
                 function = pop()
-                # list(map(int, input().split()))
-                # [None, list, None, map, int, None, input]
             elif op == self.opcodes["CALL"]:
                 if "<function <listcomp> at " in str(function):
                     data = []
@@ -630,17 +626,34 @@ class VM:
                 push(data)
             elif op == self.opcodes["BINARY_SUBSCR"]:
                 item = pop()
-                data = pop()[item]
+                data = pop()
+                data = data[item]
                 push(data)
             elif op == self.opcodes["IMPORT_NAME"]:
                 name = self.names[arg]
                 push(__import__(name))
             elif op == self.opcodes["IMPORT_FROM"]:
+                name = self.names[arg]
                 data = pop()
-                name = pop()
-                
-                for i in name:
-                    push(getattr(data, i))
+                item = pop()
+                for i in range(len(item)):
+                    if item[i] == name:
+                        try:
+                            v = getattr(data, item[i])
+                        except AttributeError:
+                            try:
+                                data = __import__("{}.{}".format(data.__name__, item[i]))
+                            except ModuleNotFoundError:
+                                raise 
+                            v = getattr(data, item[i])
+                        item = list(item)
+                        item.remove(name)
+                        item = tuple(item)
+                        if len(item) > 0:
+                            push(item)
+                            push(data)
+                        push(v)
+                        break                
             elif op == self.opcodes["LOAD_ATTR"]:
                 name = self.names[arg]
                 data = pop()
@@ -831,6 +844,23 @@ class VM:
                     cx = get_jump_to(dis_data, "POP_JUMP_BACKWARD_IF_TRUE", cx)
             elif op == self.opcodes["EXTENDED_ARG"]:
                 EXTENDED_ARG = arg
+            elif op == self.opcodes["BUILD_SLICE"]:
+                step, stop, start = None, None, None
+                if arg == 2:
+                    stop = pop()
+                    start = pop()
+                    data = pop()
+                elif arg == 3:
+                    step = pop()
+                    stop = pop()
+                    start = pop()
+                    data = pop()
+                else:
+                    self.logging.error("BUILD_SLICE: Unsupported arg = {}".format(arg))
+                
+                data = data[start:stop:step]
+                push({'value': data})
+                push('value')
             else:
                 name_opcode = None
                 for key, value in self.opcodes.items():
