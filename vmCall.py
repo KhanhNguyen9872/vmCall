@@ -166,6 +166,10 @@ class VM:
                 "PRECALL": 166,
                 "CALL": 171,
                 "KW_NAMES": 172,
+                "POP_JUMP_BACKWARD_IF_NOT_NONE": 173,
+                "POP_JUMP_BACKWARD_IF_NONE": 174,
+                "POP_JUMP_BACKWARD_IF_FALSE": 175,
+                "POP_JUMP_BACKWARD_IF_TRUE": 176
             }
         }
 
@@ -523,7 +527,7 @@ class VM:
                 kwargs = {}
                 if build_class:
                     build_class = False
-            elif op == self.opcodes["POP_JUMP_FORWARD_IF_TRUE"]: # uncompleted
+            elif op == self.opcodes["POP_JUMP_FORWARD_IF_TRUE"]:
                 b = pop()
                 if (arg % 2 != 0):
                     arg = arg * 2
@@ -531,12 +535,8 @@ class VM:
                 if b:
                     jump_to = get_jump_to(dis_data, "POP_JUMP_FORWARD_IF_TRUE", cx)
                     while cx < jump_to:
-                        # try:
-                        #     pop()
-                        # except:
-                        #     pass
                         cx += arg
-            elif op == self.opcodes["POP_JUMP_FORWARD_IF_FALSE"]: # uncompleted
+            elif op == self.opcodes["POP_JUMP_FORWARD_IF_FALSE"]:
                 b = pop()
                 if (arg % 2 != 0):
                     arg = arg * 2
@@ -544,10 +544,6 @@ class VM:
                 if not b:
                     jump_to = get_jump_to(dis_data, "POP_JUMP_FORWARD_IF_FALSE", cx)
                     while cx < jump_to:
-                        # try:
-                        #     pop()
-                        # except:
-                        #     pass
                         cx += arg
             elif op == self.opcodes["IS_OP"]:
                 b = pop()
@@ -580,7 +576,7 @@ class VM:
                     # except:
                     #     pass
                     cx += arg
-            elif op == self.opcodes["JUMP_BACKWARD"]: # uncompleted
+            elif op == self.opcodes["JUMP_BACKWARD"]:
                 if (arg % 2 != 0):
                     arg = arg * 2
 
@@ -844,6 +840,52 @@ class VM:
                     del self.vmGlobals[name]
                 except KeyError:
                     pass
+            elif op == self.opcodes["POP_JUMP_BACKWARD_IF_NOT_NONE"]:
+                b = pop()
+                b = b is None
+                if (arg % 2 != 0):
+                    arg = arg * 2
+
+                if not b:
+                    jump_to = get_jump_to(dis_data, "POP_JUMP_BACKWARD_IF_NOT_NONE", cx)
+                    while cx > jump_to:
+                        try:
+                            pop()
+                        except:
+                            pass
+                        cx -= arg
+            elif op == self.opcodes["POP_JUMP_BACKWARD_IF_NONE"]:
+                b = pop()
+                b = b is None
+                if (arg % 2 != 0):
+                    arg = arg * 2
+
+                if b:
+                    jump_to = get_jump_to(dis_data, "POP_JUMP_BACKWARD_IF_NONE", cx)
+                    while cx > jump_to:
+                        try:
+                            pop()
+                        except:
+                            pass
+                        cx -= arg
+            elif op == self.opcodes["POP_JUMP_BACKWARD_IF_FALSE"]: # uncompleted
+                b = pop()
+                if (arg % 2 != 0):
+                    arg = arg * 2
+
+                if not b:
+                    jump_to = get_jump_to(dis_data, "POP_JUMP_BACKWARD_IF_FALSE", cx)
+                    while cx > jump_to:
+                        cx += arg
+            elif op == self.opcodes["POP_JUMP_BACKWARD_IF_TRUE"]:
+                b = pop()
+                if (arg % 2 != 0):
+                    arg = arg * 2
+
+                if b:
+                    jump_to = get_jump_to(dis_data, "POP_JUMP_BACKWARD_IF_TRUE", cx)
+                    while cx > jump_to:
+                        cx -= arg
             else:
                 name_opcode = None
                 for key, value in self.opcodes.items():
