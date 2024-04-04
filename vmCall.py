@@ -507,8 +507,9 @@ class VM:
                 try:
                     VMobj = makeVM(function)
                     VMobj = VM(VMobj.obj)
-                    VMobj.vmGlobals2 = self.vmGlobals
+                    # VMobj.vmGlobals2 = self.vmGlobals
                     VMobj.vmGlobals2.update(self.vmGlobals2)
+                    VMobj.vmGlobals2.update(self.vmGlobals)
                     if build_class:
                         VMobj.isFunction = 2
                     data = VMobj(*args, **kwargs)
