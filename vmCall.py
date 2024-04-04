@@ -644,7 +644,7 @@ class VM:
                             try:
                                 data = __import__("{}.{}".format(data.__name__, item[i]))
                             except ModuleNotFoundError:
-                                raise 
+                                raise ImportError("cannot import name '{}' from '{}'".format(item[i], data.__name__))
                             v = getattr(data, item[i])
                         item = list(item)
                         item.remove(name)
