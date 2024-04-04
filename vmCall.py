@@ -12,6 +12,8 @@ __import__('sys').setrecursionlimit(1000000000)
 class makeVM:
     def __init__(self, code):
         self.VM_addr = __import__('builtins').hex(__import__('builtins').id(self))
+        self.version = "{major}.{minor}".format(major = __import__('sys').version_info.major, minor = __import__('sys').version_info.minor)
+        self.logging = __import__('logging')
         self.isFunction = 0
         type_code = str(type(code))
         if type_code == "<class 'function'>" or type_code == "<class 'method'>":
@@ -33,6 +35,14 @@ class makeVM:
 
     @property
     def pickle(self):
+        self.obj = list(self.obj)
+        self.obj[1] = list(self.obj[1])
+        for i in range(len(self.obj[1])):
+            if str(type(self.obj[1][i])) == "<class 'code'>":
+                self.logging.warning("makeVM(): found 'code object' at co_consts[{}], this 'pickle data' will not work on another 'python{}'".format(i, self.version))
+                self.obj[1][i] = {'codeObj': "__import__('marshal').loads(__import__('zlib').decompress(__import__('base64').b85decode({code})))".format(code = str(__import__('base64').b85encode(__import__('zlib').compress(__import__('marshal').dumps(self.obj[1][i])))))}
+        self.obj[1] = tuple(self.obj[1])
+        self.obj = tuple(self.obj)
         return __import__('_pickle').dumps(self.obj)
 
     @property
@@ -45,6 +55,8 @@ class makeVM:
 
 class VM:
     def __init__(self, pickle_data):
+        self.version = "{major}.{minor}".format(major = __import__('sys').version_info.major, minor = __import__('sys').version_info.minor)
+
         self.pickle = __import__('_pickle')
         if str(type(pickle_data)) == "<class 'code'>":
             unpickle = (pickle_data.co_code, pickle_data.co_consts, pickle_data.co_names,)
@@ -70,6 +82,19 @@ class VM:
             self.isFunction = unpickle[5]
         except IndexError:
             self.isFunction = 0
+
+        self.consts = list(self.consts)
+        for i in range(len(self.consts)):
+            if str(type(self.consts[i])) == "<class 'dict'>":
+                try:
+                    if "__import__('marshal').loads(__import__('zlib').decompress(__import__('base64').b85decode(" in self.consts[i]['codeObj']:
+                        try:
+                            self.consts[i] = eval(self.consts[i]['codeObj'])
+                        except ValueError:
+                            raise ValueError("this pickle data not work on this python{}".format(self.version))
+                except KeyError:
+                    pass
+        self.consts = tuple(self.consts)
 
         self.vmGlobals2 = vars(__import__('builtins')).copy()
         self.vmGlobals = {
@@ -99,84 +124,81 @@ class VM:
         self.types = __import__('types')
         self.__dir__ = dir(self.VM_addr)
         self.opcodes = {
-            "3.11": {
-                "CACHE": 0,
-                "POP_TOP": 1,
-                "PUSH_NULL": 2,
-                "NOP": 9,
-                "UNARY_POSITIVE": 10,
-                "UNARY_NEGATIVE": 11,
-                "UNARY_NOT": 12,
-                "UNARY_INVERT": 15,
-                "BINARY_SUBSCR": 25,
-                "PUSH_EXC_INFO": 35,
-                "CHECK_EXC_MATCH": 36,
-                "STORE_SUBSCR": 60,
-                "GET_ITER": 68,
-                "LOAD_BUILD_CLASS": 71,
-                "RETURN_VALUE": 83,
-                "IMPORT_STAR": 84,
-                "POP_EXCEPT": 89,
-                "STORE_NAME": 90,
-                "UNPACK_SEQUENCE": 92,
-                "FOR_ITER": 93,
-                "STORE_ATTR": 95,
-                "DELETE_ATTR": 96,
-                "STORE_GLOBAL": 97,
-                "DELETE_GLOBAL": 98,
-                "SWAP": 99,
-                "LOAD_CONST": 100,
-                "LOAD_NAME": 101,
-                "BUILD_TUPLE": 102,
-                "BUILD_LIST": 103,
-                "BUILD_SET": 104,
-                "BUILD_MAP": 105,
-                "LOAD_ATTR": 106,
-                "COMPARE_OP": 107,
-                "IMPORT_NAME": 108,
-                "IMPORT_FROM": 109,
-                "JUMP_FORWARD": 110,
-                "POP_JUMP_FORWARD_IF_FALSE": 114,
-                "POP_JUMP_FORWARD_IF_TRUE": 115,
-                "LOAD_GLOBAL": 116,
-                "IS_OP": 117,
-                "RERAISE": 119,
-                "COPY": 120,
-                "BINARY_OP": 122,
-                "LOAD_FAST": 124,
-                "STORE_FAST": 125,
-                "DELETE_FAST": 126,
-                "POP_JUMP_FORWARD_IF_NOT_NONE": 128,
-                "POP_JUMP_FORWARD_IF_NONE": 129,
-                "RAISE_VARARGS": 130,
-                "MAKE_FUNCTION": 132,
-                "BUILD_SLICE": 133,
-                "MAKE_CELL": 135,
-                "LOAD_CLOSURE": 136,
-                "STORE_DEREF": 138,
-                "JUMP_BACKWARD": 140,
-                "EXTENDED_ARG": 144,
-                "RESUME": 151,
-                "FORMAT_VALUE": 155,
-                "BUILD_CONST_KEY_MAP": 156,
-                "BUILD_STRING": 157,
-                "LOAD_METHOD": 160,
-                "LIST_EXTEND": 162,
-                "SET_UPDATE": 163,
-                "DICT_MERGE": 164,
-                "DICT_UPDATE": 165,
-                "PRECALL": 166,
-                "CALL": 171,
-                "KW_NAMES": 172,
-                "POP_JUMP_BACKWARD_IF_NOT_NONE": 173,
-                "POP_JUMP_BACKWARD_IF_NONE": 174,
-                "POP_JUMP_BACKWARD_IF_FALSE": 175,
-                "POP_JUMP_BACKWARD_IF_TRUE": 176
-            }
+            "CACHE": 0,
+            "POP_TOP": 1,
+            "PUSH_NULL": 2,
+            "NOP": 9,
+            "UNARY_POSITIVE": 10,
+            "UNARY_NEGATIVE": 11,
+            "UNARY_NOT": 12,
+            "UNARY_INVERT": 15,
+            "BINARY_SUBSCR": 25,
+            "PUSH_EXC_INFO": 35,
+            "CHECK_EXC_MATCH": 36,
+            "STORE_SUBSCR": 60,
+            "GET_ITER": 68,
+            "LOAD_BUILD_CLASS": 71,
+            "RETURN_VALUE": 83,
+            "IMPORT_STAR": 84,
+            "POP_EXCEPT": 89,
+            "STORE_NAME": 90,
+            "UNPACK_SEQUENCE": 92,
+            "FOR_ITER": 93,
+            "STORE_ATTR": 95,
+            "DELETE_ATTR": 96,
+            "STORE_GLOBAL": 97,
+            "DELETE_GLOBAL": 98,
+            "SWAP": 99,
+            "LOAD_CONST": 100,
+            "LOAD_NAME": 101,
+            "BUILD_TUPLE": 102,
+            "BUILD_LIST": 103,
+            "BUILD_SET": 104,
+            "BUILD_MAP": 105,
+            "LOAD_ATTR": 106,
+            "COMPARE_OP": 107,
+            "IMPORT_NAME": 108,
+            "IMPORT_FROM": 109,
+            "JUMP_FORWARD": 110,
+            "POP_JUMP_FORWARD_IF_FALSE": 114,
+            "POP_JUMP_FORWARD_IF_TRUE": 115,
+            "LOAD_GLOBAL": 116,
+            "IS_OP": 117,
+            "RERAISE": 119,
+            "COPY": 120,
+            "BINARY_OP": 122,
+            "LOAD_FAST": 124,
+            "STORE_FAST": 125,
+            "DELETE_FAST": 126,
+            "POP_JUMP_FORWARD_IF_NOT_NONE": 128,
+            "POP_JUMP_FORWARD_IF_NONE": 129,
+            "RAISE_VARARGS": 130,
+            "MAKE_FUNCTION": 132,
+            "BUILD_SLICE": 133,
+            "MAKE_CELL": 135,
+            "LOAD_CLOSURE": 136,
+            "STORE_DEREF": 138,
+            "JUMP_BACKWARD": 140,
+            "EXTENDED_ARG": 144,
+            "RESUME": 151,
+            "FORMAT_VALUE": 155,
+            "BUILD_CONST_KEY_MAP": 156,
+            "BUILD_STRING": 157,
+            "LOAD_METHOD": 160,
+            "LIST_EXTEND": 162,
+            "SET_UPDATE": 163,
+            "DICT_MERGE": 164,
+            "DICT_UPDATE": 165,
+            "PRECALL": 166,
+            "CALL": 171,
+            "KW_NAMES": 172,
+            "POP_JUMP_BACKWARD_IF_NOT_NONE": 173,
+            "POP_JUMP_BACKWARD_IF_NONE": 174,
+            "POP_JUMP_BACKWARD_IF_FALSE": 175,
+            "POP_JUMP_BACKWARD_IF_TRUE": 176
         }
 
-        self.version = "{major}.{minor}".format(major = __import__('sys').version_info.major, minor = __import__('sys').version_info.minor)
-        self.opcodes = self.opcodes[self.version]
+        # self.opcodes = self.opcodes[self.version]
         return None
 
     @property
@@ -504,6 +526,8 @@ class VM:
                     args = []
 
                 # print(stk, function, args)
+                if str(type(function)) == "<class 'method'>":
+                    args.insert(0, pop())
                 try:
                     VMobj = makeVM(function)
                     VMobj = VM(VMobj.obj)
@@ -677,7 +701,10 @@ class VM:
             elif op == self.opcodes["LOAD_METHOD"]:
                 name = self.names[arg]
                 data = pop()
-                push(getattr(data, name))
+                item = getattr(data, name)
+                if str(type(item)) == "<class 'method'>":
+                    push(data)
+                push(item)
             elif op == self.opcodes["POP_JUMP_FORWARD_IF_NONE"]:
                 b = pop()
                 b = b is None
