@@ -295,6 +295,7 @@ class VM:
         cx  = 0
         arg = 0
         previous_arg = [False, arg]
+        EXTENDED_ARG = 0
         stk = []
         push = stk.append
         pop  = stk.pop
@@ -310,6 +311,9 @@ class VM:
 
             op  = self.code[cx]
             arg = self.code[cx + 1]
+            if EXTENDED_ARG > 0:
+                arg = arg + EXTENDED_ARG
+                EXTENDED_ARG = 0
 
             if op == self.opcodes["LOAD_GLOBAL"]:
                 try:
@@ -507,7 +511,7 @@ class VM:
                 try:
                     VMobj = makeVM(function)
                     VMobj = VM(VMobj.obj)
-                    VMobj.vmGlobals2.update(self.vmGlobals)
+                    VMobj.vmGlobals2 = self.vmGlobals
                     VMobj.vmGlobals2.update(self.vmGlobals2)
                     if build_class:
                         VMobj.isFunction = 2
@@ -529,22 +533,14 @@ class VM:
                     build_class = False
             elif op == self.opcodes["POP_JUMP_FORWARD_IF_TRUE"]:
                 b = pop()
-                if (arg % 2 != 0):
-                    arg = arg * 2
 
                 if b:
-                    jump_to = get_jump_to(dis_data, "POP_JUMP_FORWARD_IF_TRUE", cx)
-                    while cx < jump_to:
-                        cx += arg
+                    cx = get_jump_to(dis_data, "POP_JUMP_FORWARD_IF_TRUE", cx)
             elif op == self.opcodes["POP_JUMP_FORWARD_IF_FALSE"]:
                 b = pop()
-                if (arg % 2 != 0):
-                    arg = arg * 2
 
                 if not b:
-                    jump_to = get_jump_to(dis_data, "POP_JUMP_FORWARD_IF_FALSE", cx)
-                    while cx < jump_to:
-                        cx += arg
+                    cx = get_jump_to(dis_data, "POP_JUMP_FORWARD_IF_FALSE", cx)
             elif op == self.opcodes["IS_OP"]:
                 b = pop()
                 a = pop()
@@ -566,23 +562,9 @@ class VM:
             elif op == self.opcodes["NOP"]:
                 pass
             elif op == self.opcodes["JUMP_FORWARD"]:
-                if (arg % 2 != 0):
-                    arg = arg * 2
-
-                jump_to = get_jump_to(dis_data, "JUMP_FORWARD", cx)
-                while cx < jump_to:
-                    # try:
-                    #     pop()
-                    # except:
-                    #     pass
-                    cx += arg
+                cx = get_jump_to(dis_data, "JUMP_FORWARD", cx)
             elif op == self.opcodes["JUMP_BACKWARD"]:
-                if (arg % 2 != 0):
-                    arg = arg * 2
-
-                jump_to = get_jump_to(dis_data, "JUMP_BACKWARD", cx)
-                while cx > jump_to:
-                    cx -= arg
+                cx = get_jump_to(dis_data, "JUMP_BACKWARD", cx)
             elif op == self.opcodes["PUSH_EXC_INFO"]:
                 push(raise_var)
             elif op == self.opcodes["POP_EXCEPT"]:
@@ -625,6 +607,7 @@ class VM:
             elif op == self.opcodes["FOR_ITER"]:
                 if (arg % 2 != 0):
                     arg = arg * 2
+
                 if list(set(stk)) == [None]:
                     jump_to = get_jump_to(dis_data, "FOR_ITER", cx)
                     while cx < jump_to:
@@ -684,31 +667,15 @@ class VM:
             elif op == self.opcodes["POP_JUMP_FORWARD_IF_NONE"]:
                 b = pop()
                 b = b is None
-                if (arg % 2 != 0):
-                    arg = arg * 2
 
                 if b:
-                    jump_to = get_jump_to(dis_data, "POP_JUMP_FORWARD_IF_NONE", cx)
-                    while cx < jump_to:
-                        try:
-                            pop()
-                        except:
-                            pass
-                        cx += arg
+                    cx = get_jump_to(dis_data, "POP_JUMP_FORWARD_IF_NONE", cx)
             elif op == self.opcodes["POP_JUMP_FORWARD_IF_NOT_NONE"]:
                 b = pop()
                 b = b is None
-                if (arg % 2 != 0):
-                    arg = arg * 2
 
                 if not b:
-                    jump_to = get_jump_to(dis_data, "POP_JUMP_FORWARD_IF_NOT_NONE", cx)
-                    while cx < jump_to:
-                        try:
-                            pop()
-                        except:
-                            pass
-                        cx += arg
+                    cx = get_jump_to(dis_data, "POP_JUMP_FORWARD_IF_NOT_NONE", cx)
             elif op == self.opcodes["BUILD_SET"]:
                 push(set({}))
             elif op == self.opcodes["SET_UPDATE"]:
@@ -843,49 +810,27 @@ class VM:
             elif op == self.opcodes["POP_JUMP_BACKWARD_IF_NOT_NONE"]:
                 b = pop()
                 b = b is None
-                if (arg % 2 != 0):
-                    arg = arg * 2
 
                 if not b:
-                    jump_to = get_jump_to(dis_data, "POP_JUMP_BACKWARD_IF_NOT_NONE", cx)
-                    while cx > jump_to:
-                        try:
-                            pop()
-                        except:
-                            pass
-                        cx -= arg
+                    cx = get_jump_to(dis_data, "POP_JUMP_BACKWARD_IF_NOT_NONE", cx)
             elif op == self.opcodes["POP_JUMP_BACKWARD_IF_NONE"]:
                 b = pop()
                 b = b is None
-                if (arg % 2 != 0):
-                    arg = arg * 2
 
                 if b:
-                    jump_to = get_jump_to(dis_data, "POP_JUMP_BACKWARD_IF_NONE", cx)
-                    while cx > jump_to:
-                        try:
-                            pop()
-                        except:
-                            pass
-                        cx -= arg
+                    cx = get_jump_to(dis_data, "POP_JUMP_BACKWARD_IF_NONE", cx)
             elif op == self.opcodes["POP_JUMP_BACKWARD_IF_FALSE"]: # uncompleted
                 b = pop()
-                if (arg % 2 != 0):
-                    arg = arg * 2
 
                 if not b:
-                    jump_to = get_jump_to(dis_data, "POP_JUMP_BACKWARD_IF_FALSE", cx)
-                    while cx > jump_to:
-                        cx += arg
+                    cx = get_jump_to(dis_data, "POP_JUMP_BACKWARD_IF_FALSE", cx)
             elif op == self.opcodes["POP_JUMP_BACKWARD_IF_TRUE"]:
                 b = pop()
-                if (arg % 2 != 0):
-                    arg = arg * 2
 
                 if b:
-                    jump_to = get_jump_to(dis_data, "POP_JUMP_BACKWARD_IF_TRUE", cx)
-                    while cx > jump_to:
-                        cx -= arg
+                    cx = get_jump_to(dis_data, "POP_JUMP_BACKWARD_IF_TRUE", cx)
+            elif op == self.opcodes["EXTENDED_ARG"]:
+                EXTENDED_ARG = arg
             else:
                 name_opcode = None
                 for key, value in self.opcodes.items():
