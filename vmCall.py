@@ -101,29 +101,29 @@ class makeVM:
                 j = {}
                 for o in range(1, len(i), 1):
                     try:
-                        match o:
-                            case 1:
-                                name = 'name'
-                            case 2:
-                                i[o] = int(i[o])
-                                name = 'arg'
-                            case 3:
-                                if i[o] == '(to' or j['name'] == 'BINARY_OP':
-                                    continue
+
+                        if o == 1:
+                            name = 'name'
+                        elif o == 2:
+                            i[o] = int(i[o])
+                            name = 'arg'
+                        elif o == 3:
+                            if i[o] == '(to' or j['name'] == 'BINARY_OP':
+                                continue
+                            else:
+                                name = i[o]
+                                if name[0] == '(' and name[-1] == ')':
+                                    i[o] = name[1:-1]
+                                    name = 'varname'
                                 else:
-                                    name = i[o]
-                                    if name[0] == '(' and name[-1] == ')':
-                                        i[o] = name[1:-1]
-                                        name = 'varname'
-                                    else:
-                                        print("case: {} - {}".format(o, i[1:]))
-                                        input()
-                            case 4:
-                                name = 'jump_to'
-                                i[o] = int(i[o][:-1])
-                            case _:
-                                print("case: {} - {}".format(o, i[1:]))
-                                input()
+                                    print("case: {} - {}".format(o, i[1:]))
+                                    input()
+                        elif o == 4:
+                            name = 'jump_to'
+                            i[o] = int(i[o][:-1])
+                        else:
+                            print("case: {} - {}".format(o, i[1:]))
+                            input()
 
                         j[name] = i[o]
                     except Exception as e:
@@ -184,6 +184,7 @@ class VM:
         except IndexError:
             self.dis_data = 0
 
+        self.mainClass = None
         self.vmGlobals2 = vars(__import__('builtins')).copy()
         self.vmGlobals = {
             '__name__': '__main__', 
@@ -331,6 +332,15 @@ class VM:
             except (TypeError, KeyError, IndexError):
                 pass
 
+        if self.isFunction == 2:
+            class vmSelf:
+                pass
+            self.mainClass = vmSelf
+
+
+        if self.mainClass is not None:
+            self.vmGlobals['self'] = self.mainClass
+
         # main
         cx  = 0
         arg = 0
@@ -395,35 +405,35 @@ class VM:
                 b = pop()
                 a = pop()
                 c = False
-                match arg:
-                    case 0 | 13:
-                        c = (a + b)
-                    case 1 | 14:
-                        c = (a & b)
-                    case 2 | 15:
-                        c = (a // b)
-                    case 3 | 16:
-                        c = (a << b)
-                    case 4 | 17:
-                        c = (a @ b)
-                    case 5 | 18:
-                        c = (a * b)
-                    case 6 | 19:
-                        c = (a % b)
-                    case 7 | 20:
-                        c = (a | b)
-                    case 8 | 21:
-                        c = (a ** b)
-                    case 9 | 22:
-                        c = (a >> b)
-                    case 10 | 23:
-                        c = (a - b)
-                    case 11 | 24:
-                        c = (a / b)
-                    case 12 | 25:
-                        c = (a ^ b)
-                    case _:
-                        self.logging.error("BINARY_OP: Unsupported ({arg})".format(arg = arg))
+
+                if arg == 0 or arg == 13:
+                    c = (a + b)
+                elif arg == 1 or arg == 14:
+                    c = (a & b)
+                elif arg == 2 or arg == 15:
+                    c = (a // b)
+                elif arg == 3 or arg == 16:
+                    c = (a << b)
+                elif arg == 4 or arg == 17:
+                    c = (a @ b)
+                elif arg == 5 or arg == 18:
+                    c = (a * b)
+                elif arg == 6 or arg == 19:
+                    c = (a % b)
+                elif arg == 7 or arg == 20:
+                    c = (a | b)
+                elif arg == 8 or arg == 21:
+                    c = (a ** b)
+                elif arg == 9 or arg == 22:
+                    c = (a >> b)
+                elif arg == 10 or arg == 23:
+                    c = (a - b)
+                elif arg == 11 or arg == 24:
+                    c = (a / b)
+                elif arg == 12 or arg == 25:
+                    c = (a ^ b)
+                else:
+                    self.logging.error("BINARY_OP: Unsupported ({arg})".format(arg = arg))
 
                 push(c)
             elif op == self.opcodes["POP_TOP"]:
@@ -438,7 +448,14 @@ class VM:
                 name = self.names[arg]
                 self.vmGlobals[name] = v
                 if self.isFunction == 2:
+                    try:
+                        if (str(type(v)) == "<class 'tuple'>" and len(v) == 7 and str(type(v[0])) == "<class 'bytes'>"):
+                            v = VM(v)
+                            v.mainClass = vmSelf
+                    except Exception as e:
+                        self.logging.error("STORE_NAME: {}".format(str(e)))
                     setattr(self.consts[-1]['classObj'], name, v)
+                    setattr(vmSelf, name, v)
 
             elif op == self.opcodes["STORE_FAST"]:
                 v = pop()
@@ -467,6 +484,7 @@ class VM:
                     return data
                 elif self.isFunction == 2:
                     try:
+                        self.mainClass = None
                         return self.consts[-1]['classObj']
                     except (IndexError, KeyError):
                         pass
@@ -489,21 +507,20 @@ class VM:
                         raise IndexError("pop from empty list")
                 c = False
 
-                match arg:
-                    case 0:
-                        c = (a < b)
-                    case 1:
-                        c = (a <= b)
-                    case 2:
-                        c = (a == b)
-                    case 3:
-                        c = (a != b)
-                    case 4:
-                        c = (a > b)
-                    case 5:
-                        c = (a >= b)
-                    case _:
-                        self.logging.error("COMPARE_OP: Unsupported ({arg})".format(arg = arg))
+                if arg == 0:
+                    c = (a < b)
+                elif arg == 1:
+                    c = (a <= b)
+                elif arg == 2:
+                    c = (a == b)
+                elif arg == 3:
+                    c = (a != b)
+                elif arg == 4:
+                    c = (a > b)
+                elif arg == 5:
+                    c = (a >= b)
+                else:
+                    self.logging.error("COMPARE_OP: Unsupported ({arg})".format(arg = arg))
                     
                 push(c)
             elif op == self.opcodes["PRECALL"]:
@@ -543,14 +560,11 @@ class VM:
                     args = []
 
                 type_func = str(type(function))
+
+                # if type_func == "<class 'method'>":
+                #     args.insert(0, pop())
                 
-                # print(stk, function, args)
-                if type_func == "<class 'method'>":
-                    args.insert(0, pop())
-                
-                if not (type_func == "<class 'tuple'>" and len(function) == 7 and str(type(function[0])) == "<class 'bytes'>"):
-                    # print(function, args, stk)
-                    # print()
+                if not (str(type(function)) == "<class 'tuple'>" and len(function) == 7 and str(type(function[0])) == "<class 'bytes'>"):
                     data = function(*args, **kwargs)
                     if stk:
                         if stk[-1] == None:
@@ -572,6 +586,7 @@ class VM:
                     if stk:
                         if stk[-1] == None:
                             pop()
+
                     push(data)
                     
                 function = None
@@ -953,5 +968,5 @@ class VM:
 NOT WORKING: 
 1. <listcomp>
 2. closure on function
-3. class object
+3. class object, bug store_name 'self'
 """
