@@ -227,6 +227,7 @@ class VM:
             "STORE_SUBSCR": 60,
             "GET_ITER": 68,
             "LOAD_BUILD_CLASS": 71,
+            "LIST_TO_TUPLE": 82,
             "RETURN_VALUE": 83,
             "IMPORT_STAR": 84,
             "POP_EXCEPT": 89,
@@ -269,6 +270,7 @@ class VM:
             "STORE_DEREF": 138,
             "JUMP_BACKWARD": 140,
             "EXTENDED_ARG": 144,
+            "LIST_APPEND_A": 145,
             "RESUME": 151,
             "FORMAT_VALUE": 155,
             "BUILD_CONST_KEY_MAP": 156,
@@ -948,6 +950,14 @@ class VM:
                 data = data[start:stop:step]
                 push({'value': data})
                 push('value')
+            elif op == self.opcodes["LIST_APPEND_A"]:
+                value = pop()
+                lst = pop()
+                lst.append(value)
+                push(lst)
+            elif op == self.opcodes["LIST_TO_TUPLE"]:
+                lst = pop()
+                push(tuple(lst))
             else:
                 name_opcode = None
                 for key, value in self.opcodes.items():
