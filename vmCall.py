@@ -232,6 +232,7 @@ class VM:
             "IMPORT_STAR": 84,
             "POP_EXCEPT": 89,
             "STORE_NAME": 90,
+            "DELETE_NAME": 91,
             "UNPACK_SEQUENCE": 92,
             "FOR_ITER": 93,
             "STORE_ATTR": 95,
@@ -254,6 +255,7 @@ class VM:
             "POP_JUMP_FORWARD_IF_TRUE": 115,
             "LOAD_GLOBAL": 116,
             "IS_OP": 117,
+            "CONTAINS_OP": 118,
             "RERAISE": 119,
             "COPY": 120,
             "BINARY_OP": 122,
@@ -355,6 +357,7 @@ class VM:
         args = []
         kwargs = {}
         build_class = False
+        raise_var = None
 
         while (cx < len(self.code)):
             # print(cx)
@@ -366,6 +369,16 @@ class VM:
             if EXTENDED_ARG > 0:
                 arg = arg + EXTENDED_ARG
                 EXTENDED_ARG = 0
+
+            if raise_var:
+                if op == self.opcodes["PUSH_EXC_INFO"]:
+                    pass
+                elif op == self.opcodes["RERAISE"]:
+                    pass
+                else:
+                    cx += 2
+                    previous_arg[1] = arg
+                    continue
 
             if op == self.opcodes["LOAD_GLOBAL"]:
                 try:
@@ -490,7 +503,8 @@ class VM:
                         return self.consts[-1]['classObj']
                     except (IndexError, KeyError):
                         pass
-                push(data)
+                return data
+                # push(data)
             elif op == self.opcodes["BUILD_LIST"]:
                 push([])
             elif op == self.opcodes["RESUME"]:
@@ -567,11 +581,14 @@ class VM:
                 #     args.insert(0, pop())
                 
                 if not (str(type(function)) == "<class 'tuple'>" and len(function) == 7 and str(type(function[0])) == "<class 'bytes'>"):
-                    data = function(*args, **kwargs)
-                    if stk:
-                        if stk[-1] == None:
-                            pop()
-                    push(data)
+                    try:
+                        data = function(*args, **kwargs)
+                        if stk:
+                            if stk[-1] == None:
+                                pop()
+                        push(data)
+                    except Exception as ex:
+                        raise_var = ex
                 else:
                     try:
                         VMobj = makeVM(function)
@@ -632,15 +649,26 @@ class VM:
                 cx = get_jump_to("JUMP_BACKWARD", cx)
             elif op == self.opcodes["PUSH_EXC_INFO"]:
                 push(raise_var)
+                raise_var = None
             elif op == self.opcodes["POP_EXCEPT"]:
                 pass
             elif op == self.opcodes["CHECK_EXC_MATCH"]:
                 b = pop()
                 a = pop()
-                push(a == b)
+                push(a)
+                if type(a) != type(type):
+                    a = type(a)
+
+                if type(b) != type(()):
+                    b = tuple([b])
+
+                push(a in b)
             elif op == self.opcodes["RERAISE"]: # uncompleted
                 if arg == 1:
-                    pass
+                    raise pop()
+                elif arg == 0:
+                    push(raise_var)
+                    raise_var = None
             elif op == self.opcodes["COPY"]: # uncompleted
                 if stk:
                     value = pop()
@@ -958,6 +986,17 @@ class VM:
             elif op == self.opcodes["LIST_TO_TUPLE"]:
                 lst = pop()
                 push(tuple(lst))
+            elif op == self.opcodes["CONTAINS_OP"]:
+                a = pop()
+                b = pop()
+                push(b in a)
+            elif op == self.opcodes["DELETE_NAME"]:
+                name = self.names[arg]
+
+                try:
+                    del self.vmGlobals[name]
+                except KeyError:
+                    pass
             else:
                 name_opcode = None
                 for key, value in self.opcodes.items():
