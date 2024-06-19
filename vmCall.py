@@ -511,7 +511,10 @@ class VM:
                 return data
                 # push(data)
             elif op == self.opcodes["BUILD_LIST"]:
-                push([])
+                lst = []
+                for i in range(0, arg):
+                    lst.append(pop())
+                push(lst)
             elif op == self.opcodes["RESUME"]:
                 pass
                 # cx = arg
@@ -545,10 +548,11 @@ class VM:
                     
                 push(c)
             elif op == self.opcodes["PRECALL"]:
-                if arg == 0 and previous_arg[0]:
-                    pop()
-                    arg = previous_arg[1]
-                    previous_arg[0] = False
+                # print(stk)
+                # if arg == 0 and previous_arg[0]:
+                #     pop()
+                #     arg = previous_arg[1]
+                #     previous_arg[0] = False
 
                 if build_class:
                     arg = arg - 1
