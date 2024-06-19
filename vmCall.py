@@ -644,7 +644,14 @@ class VM:
                 push(~pop())
             elif op == self.opcodes["RAISE_VARARGS"]:
                 if arg == 1:
-                    raise_var = pop()
+                    try:
+                        self.code[cx + 2]
+                        raise_var = pop()
+                    except IndexError:
+                        arg = -1
+
+                if arg == -1:
+                    raise pop()
             elif op == self.opcodes["NOP"]:
                 pass
             elif op == self.opcodes["JUMP_FORWARD"]:
