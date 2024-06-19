@@ -742,8 +742,12 @@ class VM:
             elif op == self.opcodes["BINARY_SUBSCR"]:
                 item = pop()
                 data = pop()
-                data = data[item]
-                push(data)
+                try:
+                    data = data[item]
+                    push(data)
+                except IndexError as ex:
+                    raise_var = ex
+                
             elif op == self.opcodes["IMPORT_NAME"]:
                 name = self.names[arg]
                 push(__import__(name))
