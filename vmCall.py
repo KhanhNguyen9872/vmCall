@@ -596,7 +596,7 @@ class VM:
                             if stk[-1] == None:
                                 pop()
                         push(data)
-                    except Exception as ex:
+                    except (Exception, KeyboardInterrupt) as ex:
                         raise_var = ex
                 else:
                     try:
