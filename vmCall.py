@@ -362,6 +362,7 @@ class VM:
         kwargs = {}
         build_class = False
         raise_var = None
+        range_for = []
 
         while (cx < len(self.code)):
             # print(cx)
@@ -693,24 +694,33 @@ class VM:
             elif op == self.opcodes["GET_ITER"]:
                 data = pop()
                 t = str(type(data))
+                range_ = 0
                 if (t == "<class 'range'>"):
                     for i in range(data[-1], data[0] - 1, -1):
-                        arg = arg + 1
+                        range_ = range_ + 1
                         push(i)
                 elif (t == "<class 'tuple'>") or (t == "<class 'list'>"):
                     for i in data[::-1]:
-                        arg = arg + 1
+                        range_ = range_ + 1
                         push(i)
                 elif (t == "<class 'str'>"):
                     for i in data[::-1]:
-                        arg = arg + 1
+                        range_ = range_ + 1
                         push(i)
                 elif (t == "<class 'dict'>"):
                     pass
+                arg = arg + range_
                 previous_arg[0] = True
+                range_for.append([0, range_])
             elif op == self.opcodes["FOR_ITER"]:
-                if stk == []:
+                if stk == [] or range_for[-1][0] >= range_for[-1][1]:
+                    try:
+                        del range_for[-1]
+                    except IndexError:
+                        pass
                     cx = get_jump_to("FOR_ITER", cx)
+                else:
+                    range_for[-1][0] += 1
             elif op == self.opcodes["LIST_EXTEND"]:
                 if arg == 1:
                     extend = pop()
@@ -778,8 +788,8 @@ class VM:
                 name = self.names[arg]
                 data = pop()
                 item = getattr(data, name)
-                if str(type(item)) == "<class 'method'>":
-                    push(data)
+                # if str(type(item)) == "<class 'method'>":
+                #     push(data)
                 push(item)
             elif op == self.opcodes["POP_JUMP_FORWARD_IF_NONE"]:
                 b = pop()
