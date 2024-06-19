@@ -116,16 +116,20 @@ class makeVM:
                                     i[o] = name[1:-1]
                                     name = 'varname'
                                 else:
+                                    continue
                                     print("case: {} - {}".format(o, i[1:]))
-                                    input()
+                                    # input()
                         elif o == 4:
                             name = 'jump_to'
                             i[o] = int(i[o][:-1])
                         else:
+                            continue
                             print("case: {} - {}".format(o, i[1:]))
-                            input()
+                            # input()
 
                         j[name] = i[o]
+                    except ValueError:
+                        continue
                     except Exception as e:
                         self.logging.error("__extract_dis__: {}".format(str(e)))
 
@@ -667,8 +671,9 @@ class VM:
                 if arg == 1:
                     raise pop()
                 elif arg == 0:
-                    push(raise_var)
-                    raise_var = None
+                    if raise_var:
+                        push(raise_var)
+                        raise_var = None
             elif op == self.opcodes["COPY"]: # uncompleted
                 if stk:
                     value = pop()
