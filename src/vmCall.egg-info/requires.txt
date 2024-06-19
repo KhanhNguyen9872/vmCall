@@ -1,0 +1,7 @@
+
+[code]
+flake8
+
+[tests]
+pytest
+pytest-cov

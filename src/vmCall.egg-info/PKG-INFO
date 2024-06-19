@@ -1,0 +1,20 @@
+Metadata-Version: 2.1
+Name: vmCall
+Version: 0.0.0.1
+Summary: a library can help running compiled code python3.11 on another version (must makeVM in python3.11 first)
+Home-page: https://github.com/KhanhNguyen9872/vmCall
+Download-URL: https://github.com/KhanhNguyen9872/vmCall
+Author: KhanhNguyen9872
+Author-email: khanhvuinguyenvan800983609@gmail.com
+License: BSD-3-Clause
+Project-URL: Documentation, https://github.com/KhanhNguyen9872/vmCall#readme
+Project-URL: Issue Tracker, https://github.com/KhanhNguyen9872/vmCall/issues
+Project-URL: Source Code, https://github.com/KhanhNguyen9872/vmCall
+Keywords: vmCall
+Platform: any
+Requires-Python: >=3.6
+Description-Content-Type: text/markdown
+Provides-Extra: tests
+Provides-Extra: code
+
+## vmCall
