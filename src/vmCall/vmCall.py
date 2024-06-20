@@ -959,15 +959,18 @@ class VM:
                 data = pop()
                 value = pop()
 
-                if (type(key) == type(())):
-                    if (len(key) == 2):
-                        data[key[0]:key[1]] = value
-                    elif (len(key) == 3):
-                        data[key[0]:key[1]:key[2]] = value
+                try:
+                    if (type(key) == type(())):
+                        if (len(key) == 2):
+                            data[key[0]:key[1]] = value
+                        elif (len(key) == 3):
+                            data[key[0]:key[1]:key[2]] = value
+                        else:
+                            self.logging.error("STORE_SUBSCR: Unsupported key ({} > 3)".format(arg))
                     else:
-                        self.logging.error("STORE_SUBSCR: Unsupported key ({} > 3)".format(arg))
-                else:
-                    data[key] = value
+                        data[key] = value
+                except IndexError as ex:
+                    raise_var = ex
             elif op == self.opcodes["LOAD_BUILD_CLASS"]:
                 class data:
                     pass
