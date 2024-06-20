@@ -21,7 +21,7 @@ from vmCall import makeVM, VM
 # open('test.pickle', 'wb').write(codeObj.pickle)
 
 # make a vm emulated
-data = open('simple_ball_fix.pickle', 'rb').read()
+data = open('simple_ball_311.pickle', 'rb').read()
 obj = VM(data)
 # print(obj)
 """
