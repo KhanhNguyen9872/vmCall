@@ -94,7 +94,7 @@ class makeVM:
                 if not i[1] in ["LOAD_GLOBAL", "STORE_GLOBAL"]:
                     continue
 
-                print(i)
+                # print(i)
                 try:
                     if len(i) == 4:
                         names[int(i[0])] = i[3][1:-1]
