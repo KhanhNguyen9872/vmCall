@@ -656,7 +656,11 @@ class VM:
                         arg = -1
 
                 if arg == -1:
-                    raise pop()
+                    obj = pop()
+                    if obj:
+                        raise obj
+                    else:
+                        self.logging.error("RAISE_VARARGS: Object not supported! ({})".format(type(obj)))
             elif op == self.opcodes["NOP"]:
                 pass
             elif op == self.opcodes["JUMP_FORWARD"]:
@@ -681,7 +685,11 @@ class VM:
                 push(a in b)
             elif op == self.opcodes["RERAISE"]: # uncompleted
                 if arg == 1:
-                    raise pop()
+                    obj = pop()
+                    if obj:
+                        raise obj
+                    else:
+                        self.logging.error("RERAISE: Object not supported! ({})".format(type(obj)))
                 elif arg == 0:
                     if raise_var:
                         push(raise_var)
