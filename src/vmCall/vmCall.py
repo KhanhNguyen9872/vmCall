@@ -10,7 +10,7 @@ __import__('types')
 __import__('sys').setrecursionlimit(1000000000)
 
 class makeVM:
-    def __init__(self, code):
+    def __init__(self, code, isFunction = None):
         self.VM_addr = __import__('builtins').hex(__import__('builtins').id(self))
         self.version = "{major}.{minor}".format(major = __import__('sys').version_info.major, minor = __import__('sys').version_info.minor)
         if self.version != "3.11":
@@ -27,6 +27,9 @@ class makeVM:
             pass
         else:
             raise TypeError("makeVM() arg 1 must be a string, bytes, method, code object or function. Found {} ({})".format(type(code), str(code)))
+
+        if isFunction != None:
+            self.isFunction = isFunction # Force set by user 
 
         self.code = code
         data = {}
@@ -48,14 +51,20 @@ class makeVM:
             if self.dis_data[i]['name'] in obj:
                 data[i] = self.dis_data[i]
                 data[i].pop('name')
-        self.obj = (self.code.co_code, self.code.co_consts, self.code.co_names, self.code.co_varnames, self.code.co_argcount, self.isFunction, data,)
+
+        # if self.isFunction == 1:
+        #     co_names_globals = self.fix_co_names()
+        # else:
+        #     co_names_globals = ()
+
+        self.obj = (self.code.co_code, self.code.co_consts, self.code.co_names, self.code.co_varnames, self.code.co_argcount, self.isFunction, data, self.fix_co_names(),)
         
         self.obj = list(self.obj)
         self.obj[1] = list(self.obj[1])
         for i in range(len(self.obj[1])):
             if str(type(self.obj[1][i])) == "<class 'code'>":
                 # self.logging.warning("makeVM(): found 'code object' at co_consts[{}], this 'pickle data' will not work on another 'python{}'".format(i, self.version))
-                data = makeVM(self.obj[1][i])
+                data = makeVM(self.obj[1][i], 1)
                 data = list(data.obj)
                 data[5] = 1
                 data = tuple(data)
@@ -64,6 +73,49 @@ class makeVM:
         self.obj[1] = tuple(self.obj[1])
         self.obj = tuple(self.obj)
         return None
+
+    def fix_co_names(self) -> tuple:
+        self.dis_data = self.__dis__(self.code).split('\n')
+        names = {}
+
+        for i in self.dis_data:
+            if i:
+                i = i.split()
+                if i[0] == "ExceptionTable:":
+                    break
+
+                try:
+                    int(i[1])
+                    del i[0]
+                except IndexError:
+                    continue
+                except ValueError:
+                    pass
+                if not i[1] in ["LOAD_GLOBAL", "STORE_GLOBAL"]:
+                    continue
+
+                print(i)
+                try:
+                    if len(i) == 4:
+                        names[int(i[0])] = i[3][1:-1]
+                    elif len(i) == 6:
+                        names[int(i[0])] = i[5][:-1]
+                    else:
+                        self.logging.warning("fix_co_names: Array is not equal 4 or 6 ({})".format(len(i)))
+                except ValueError as e:
+                    self.logging.warning("fix_co_names: cannot detect cx!")
+
+        # data = []
+        # if names:
+        #     max_arg = max(names) + 1
+            
+        #     for i in range(0, max_arg, 1):
+        #         try:
+        #             data.append(names[i])
+        #         except KeyError:
+        #             data.append(None)
+
+        return names
     
     def __dis__(self, code = None):
         if code == None:
@@ -188,6 +240,11 @@ class VM:
         except IndexError:
             self.dis_data = 0
 
+        try:
+            self.co_names_globals = unpickle[7]
+        except IndexError:
+            self.co_names_globals = {}
+
         self.mainClass = None
         self.vmGlobals2 = vars(__import__('builtins')).copy()
         self.vmGlobals = {
@@ -228,6 +285,8 @@ class VM:
             "BINARY_SUBSCR": 25,
             "PUSH_EXC_INFO": 35,
             "CHECK_EXC_MATCH": 36,
+            "WITH_EXCEPT_START": 49,
+            "BEFORE_WITH": 53,
             "STORE_SUBSCR": 60,
             "GET_ITER": 68,
             "LOAD_BUILD_CLASS": 71,
@@ -387,18 +446,22 @@ class VM:
 
             if op == self.opcodes["LOAD_GLOBAL"]:
                 try:
-                    if self.isFunction == 1:
-                        if arg > 0:
-                            name = self.names[arg - 1]
-                        else:
-                            name = self.names[arg]
-                    else:
-                        name = self.names[arg]
+                    # if self.isFunction == 1:
+                    #     if arg > 0:
+                    #         name = self.names[arg - 1]
+                    #     else:
+                    #         name = self.names[arg]
+                    # else:
+                    # if self.isFunction == 1:
+
+                    name = self.co_names_globals[cx]
+                    # else:
+                    #     name = self.names[arg]
                 except IndexError:
-                    if self.isFunction == 1:
-                        name = self.names[-1]
-                    else:
-                        self.logging.error("LOAD_GLOBAL: Cannot get args[{}]".format(arg))
+                    # if self.isFunction == 1:
+                    #     name = self.names[-1]
+                    # else:
+                    self.logging.error("LOAD_GLOBAL: Cannot get args[{}]".format(arg))
 
                 try:
                     name = self.vmGlobals[name]
@@ -408,6 +471,7 @@ class VM:
                     except KeyError:
                         raise NameError("LOAD_GLOBAL: Cannot get '{}' in GLOBAL".format(self.names[arg]))
                 push(name)
+                
             elif op == self.opcodes["LOAD_CONST"]:
                 const = self.consts[arg]
                 push(const)
@@ -426,34 +490,37 @@ class VM:
                 a = pop()
                 c = False
 
-                if arg == 0 or arg == 13:
-                    c = (a + b)
-                elif arg == 1 or arg == 14:
-                    c = (a & b)
-                elif arg == 2 or arg == 15:
-                    c = (a // b)
-                elif arg == 3 or arg == 16:
-                    c = (a << b)
-                elif arg == 4 or arg == 17:
-                    c = (a @ b)
-                elif arg == 5 or arg == 18:
-                    c = (a * b)
-                elif arg == 6 or arg == 19:
-                    c = (a % b)
-                elif arg == 7 or arg == 20:
-                    c = (a | b)
-                elif arg == 8 or arg == 21:
-                    c = (a ** b)
-                elif arg == 9 or arg == 22:
-                    c = (a >> b)
-                elif arg == 10 or arg == 23:
-                    c = (a - b)
-                elif arg == 11 or arg == 24:
-                    c = (a / b)
-                elif arg == 12 or arg == 25:
-                    c = (a ^ b)
-                else:
-                    self.logging.error("BINARY_OP: Unsupported ({arg})".format(arg = arg))
+                try:
+                    if arg == 0 or arg == 13:
+                        c = (a + b)
+                    elif arg == 1 or arg == 14:
+                        c = (a & b)
+                    elif arg == 2 or arg == 15:
+                        c = (a // b)
+                    elif arg == 3 or arg == 16:
+                        c = (a << b)
+                    elif arg == 4 or arg == 17:
+                        c = (a @ b)
+                    elif arg == 5 or arg == 18:
+                        c = (a * b)
+                    elif arg == 6 or arg == 19:
+                        c = (a % b)
+                    elif arg == 7 or arg == 20:
+                        c = (a | b)
+                    elif arg == 8 or arg == 21:
+                        c = (a ** b)
+                    elif arg == 9 or arg == 22:
+                        c = (a >> b)
+                    elif arg == 10 or arg == 23:
+                        c = (a - b)
+                    elif arg == 11 or arg == 24:
+                        c = (a / b)
+                    elif arg == 12 or arg == 25:
+                        c = (a ^ b)
+                    else:
+                        self.logging.error("BINARY_OP: Unsupported ({arg})".format(arg = arg))
+                except TypeError as ex:
+                    raise_var = ex
 
                 push(c)
             elif op == self.opcodes["POP_TOP"]:
@@ -557,7 +624,7 @@ class VM:
                 if build_class:
                     arg = arg - 1
 
-                for argc in range(arg):
+                for argc in range(0, arg, 1):
                     try:
                         data = pop()
                         if str(type(data)) == "<class 'dict'>":
@@ -589,7 +656,7 @@ class VM:
                 # if type_func == "<class 'method'>":
                 #     args.insert(0, pop())
                 
-                if not (str(type(function)) == "<class 'tuple'>" and len(function) == 7 and str(type(function[0])) == "<class 'bytes'>"):
+                if not (str(type(function)) == "<class 'tuple'>" and len(function) == 8 and str(type(function[0])) == "<class 'bytes'>"):
                     try:
                         data = function(*args, **kwargs)
                         if stk:
@@ -986,7 +1053,13 @@ class VM:
                 build_class = True
             elif op == self.opcodes["STORE_GLOBAL"]:
                 data = pop()
-                name = self.names[arg]
+                # if self.isFunction == 1:
+                print(self.co_names_globals)
+                print(cx)
+                name = self.co_names_globals[cx]
+                # else:
+                #     name = self.names[arg]
+
                 self.vmGlobals[name] = v
             elif op == self.opcodes["DELETE_GLOBAL"]:
                 name = self.varnames[arg]
