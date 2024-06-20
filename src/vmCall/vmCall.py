@@ -740,10 +740,18 @@ class VM:
                 data = {key: value for key, value in list(data.items())[::-1]}
                 push(data)
             elif op == self.opcodes["BINARY_SUBSCR"]:
-                item = pop()
+                key = pop()
                 data = pop()
                 try:
-                    data = data[item]
+                    if (type(key) == type(())):
+                        if (len(key) == 2):
+                            data = data[key[0]:key[1]]
+                        elif (len(key) == 3):
+                            data = data[key[0]:key[1]:key[2]]
+                        else:
+                            self.logging.error("BINARY_SUBSCR: Unsupported key ({} > 3)".format(arg))
+                    else:
+                        data = data[key]
                     push(data)
                 except IndexError as ex:
                     raise_var = ex
@@ -950,7 +958,16 @@ class VM:
                 key = pop()
                 data = pop()
                 value = pop()
-                data[key] = value
+
+                if (type(key) == type(())):
+                    if (len(key) == 2):
+                        data[key[0]:key[1]] = value
+                    elif (len(key) == 3):
+                        data[key[0]:key[1]:key[2]] = value
+                    else:
+                        self.logging.error("STORE_SUBSCR: Unsupported key ({} > 3)".format(arg))
+                else:
+                    data[key] = value
             elif op == self.opcodes["LOAD_BUILD_CLASS"]:
                 class data:
                     pass
@@ -996,18 +1013,17 @@ class VM:
                 if arg == 2:
                     stop = pop()
                     start = pop()
-                    data = pop()
                 elif arg == 3:
                     step = pop()
                     stop = pop()
                     start = pop()
-                    data = pop()
                 else:
                     self.logging.error("BUILD_SLICE: Unsupported arg = {}".format(arg))
                 
-                data = data[start:stop:step]
-                push({'value': data})
-                push('value')
+                push((start, stop, step))
+                # data = data[start:stop:step]
+                # push({'value': data})
+                # push('value')
             elif op == self.opcodes["LIST_APPEND_A"]:
                 value = pop()
                 lst = pop()
