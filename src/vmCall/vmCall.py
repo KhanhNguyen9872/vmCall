@@ -749,7 +749,10 @@ class VM:
                 if type(b) != type(()):
                     b = tuple([b])
 
-                push(a in b)
+                if Exception in b:
+                    push(True)
+                else:
+                    push(a in b)
             elif op == self.opcodes["RERAISE"]: # uncompleted
                 if arg == 1:
                     obj = pop()
@@ -833,7 +836,10 @@ class VM:
                 
             elif op == self.opcodes["IMPORT_NAME"]:
                 name = self.names[arg]
-                push(__import__(name))
+                try:
+                    push(__import__(name))
+                except Exception as ex:
+                    raise_var = ex
             elif op == self.opcodes["IMPORT_FROM"]:
                 name = self.names[arg]
                 data = pop()
@@ -846,7 +852,9 @@ class VM:
                             try:
                                 data = __import__("{}.{}".format(data.__name__, item[i]))
                             except ModuleNotFoundError:
-                                raise ImportError("cannot import name '{}' from '{}'".format(item[i], data.__name__))
+                                raise_var = ImportError("cannot import name '{}' from '{}'".format(item[i], data.__name__))
+                            cx += 2
+                            continue
                             v = getattr(data, item[i])
                         item = list(item)
                         item.remove(name)
@@ -1140,6 +1148,9 @@ class VM:
 
             cx += 2
             previous_arg[1] = arg
+
+        if raise_var:
+            raise raise_var
 
         return 0
 
