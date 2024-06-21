@@ -207,7 +207,7 @@ class makeVM:
         return None
 
 class VM:
-    def __init__(self, pickle_data):
+    def __init__(self, pickle_data, getGlobals = False):
         self.version = "{major}.{minor}".format(major = __import__('sys').version_info.major, minor = __import__('sys').version_info.minor)
 
         self.pickle = __import__('_pickle')
@@ -239,6 +239,8 @@ class VM:
             self.dis_data = unpickle[6]
         except IndexError:
             self.dis_data = 0
+
+        self.getGlobals = getGlobals
 
         try:
             self.co_names_globals = unpickle[7]
@@ -575,6 +577,9 @@ class VM:
                         return self.consts[-1]['classObj']
                     except (IndexError, KeyError):
                         pass
+
+                if self.getGlobals:
+                    return self.vmGlobals
                 return data
                 # push(data)
             elif op == self.opcodes["BUILD_LIST"]:
@@ -749,10 +754,7 @@ class VM:
                 if type(b) != type(()):
                     b = tuple([b])
 
-                if Exception in b:
-                    push(True)
-                else:
-                    push(a in b)
+                push(a in b)
             elif op == self.opcodes["RERAISE"]: # uncompleted
                 if arg == 1:
                     obj = pop()
@@ -838,8 +840,34 @@ class VM:
                 name = self.names[arg]
                 try:
                     push(__import__(name))
-                except Exception as ex:
-                    raise_var = ex
+                except ImportError as ex:
+                    if ("bad magic number in " in str(ex)[:20]):
+                        data = open('{}.pyc'.format(name), 'rb').read()
+                        try:
+                            data = __import__('pickle').loads(data)
+                            if len(data) == 8:
+                                class obj:
+                                    def __init__(self, name, vmGlobals):
+                                        self.__name__ = name
+                                        for i in vmGlobals:
+                                            setattr(self, i, vmGlobals[i])
+                                        self.vmGlobals = vmGlobals
+                                        
+                                    def __repr__(self):
+                                        return "<module '{0}' from '{0}.pyc'>".format(self.__name__)
+
+                                    @property
+                                    def __dict__(self):
+                                        return self.vmGlobals
+
+                                data = obj(name, VM(data, getGlobals=True)())
+                                push(data)
+                            else:
+                                raise __import__('_pickle').UnpicklingError()
+                        except __import__('_pickle').UnpicklingError as exx:
+                            self.logging.error("IMPORT_NAME: to import '{0}', you must makeVM it in python3.11 and write pickle to '{0}.pyc'".format(name))
+                    else:
+                        raise_var = ex
             elif op == self.opcodes["IMPORT_FROM"]:
                 name = self.names[arg]
                 data = pop()
@@ -852,9 +880,7 @@ class VM:
                             try:
                                 data = __import__("{}.{}".format(data.__name__, item[i]))
                             except ModuleNotFoundError:
-                                raise_var = ImportError("cannot import name '{}' from '{}'".format(item[i], data.__name__))
-                            cx += 2
-                            continue
+                                raise ImportError("cannot import name '{}' from '{}'".format(item[i], data.__name__))
                             v = getattr(data, item[i])
                         item = list(item)
                         item.remove(name)
@@ -1149,9 +1175,8 @@ class VM:
             cx += 2
             previous_arg[1] = arg
 
-        if raise_var:
-            raise raise_var
-
+        if self.getGlobals:
+            return self.vmGlobals
         return 0
 
 """
